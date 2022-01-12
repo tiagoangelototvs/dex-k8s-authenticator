@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -11,8 +12,25 @@ import (
 	"strings"
 )
 
+func base64decode(v string) string {
+	data, err := base64.StdEncoding.DecodeString(v)
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
+func base64encode(v string) string {
+	return base64.StdEncoding.EncodeToString([]byte(v))
+}
+
+var templateFuncMap = template.FuncMap{
+	"b64dec": base64decode,
+	"b64enc": base64encode,
+}
+
 // compile all templates and cache them
-var templates = template.Must(template.ParseGlob("./templates/*.html"))
+var templates = template.Must(template.New("all").Funcs(templateFuncMap).ParseGlob("./templates/*.html"))
 
 func renderIndex(w http.ResponseWriter, config *Config) {
 	t, _ := template.ParseFiles("./templates/index.html")
