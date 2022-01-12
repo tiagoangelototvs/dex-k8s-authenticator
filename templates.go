@@ -35,9 +35,9 @@ var templates = template.Must(template.New("all").Funcs(templateFuncMap).ParseGl
 func renderIndex(w http.ResponseWriter, config *Config) {
 	t, _ := template.ParseFiles("./templates/index.html")
 	err := t.Execute(w, config)
-
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		http.Error(w, http.StatusText(500), 500)
 	}
 }
 
@@ -111,10 +111,9 @@ func (cluster *Cluster) renderToken(w http.ResponseWriter,
 		ShowAssignedExpectedGroups: cluster.Show_Assigned_Expected_Groups,
 	}
 
-	err = templates.ExecuteTemplate(w, "kubeconfig.html", token_data)
-
-	if err != nil {
-		log.Fatal(err)
+	if err := templates.ExecuteTemplate(w, "kubeconfig.html", token_data); err != nil {
+		log.Println(err)
+		http.Error(w, http.StatusText(500), 500)
 	}
 }
 
@@ -123,13 +122,14 @@ func (cluster *Cluster) renderHTMLError(w http.ResponseWriter, errorMsg string, 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(code)
-	err := templates.ExecuteTemplate(w, "error.html", map[string]string{
+
+	if err := templates.ExecuteTemplate(w, "error.html", map[string]string{
 		"Logo_Uri":          cluster.Config.Logo_Uri,
 		"Web_Path_Prefix":   cluster.Config.Web_Path_Prefix,
 		"Code":              fmt.Sprintf("%d", code),
 		"Error_Description": errorMsg,
-	})
-	if err != nil {
+	}); err != nil {
 		log.Println(err)
+		http.Error(w, http.StatusText(500), 500)
 	}
 }

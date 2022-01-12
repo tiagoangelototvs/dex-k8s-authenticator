@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -56,20 +57,21 @@ func (d debugTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 // Define each cluster
 type Cluster struct {
-	Name                          string
-	Namespace                     string
-	Short_Description             string
-	Description                   string
-	Issuer                        string
-	Client_Secret                 string
-	Client_ID                     string
-	K8s_Master_URI                string
-	K8s_Ca_URI                    string
-	K8s_Ca_Pem                    string
-	K8s_Ca_Pem_File               string
-	Static_Context_Name           bool
-	Show_Assigned_Expected_Groups bool
-	Scopes                        []string
+	Name                      string
+	Namespace                 string
+	Short_Description         string
+	Description               string
+	Issuer                    string
+	Client_Secret             string
+	Client_ID                 string
+	Connector_ID              string
+	K8s_Master_URI            string
+	K8s_Ca_URI                string
+	K8s_Ca_Pem                string
+	K8s_Ca_Pem_File           string
+	K8s_Ca_Pem_Base64_Encoded string
+	Static_Context_Name       bool
+	Scopes                    []string
 
 	Verifier       *oidc.IDTokenVerifier
 	Provider       *oidc.Provider
@@ -97,7 +99,7 @@ type Config struct {
 }
 
 func substituteEnvVars(text string) string {
-	re := regexp.MustCompile("\\${([a-zA-Z0-9\\-_]+)}")
+	re := regexp.MustCompile(`\${([a-zA-Z0-9\-_]+)}`)
 	matches := re.FindAllStringSubmatch(text, -1)
 	for _, val := range matches {
 		envVar := os.Getenv(val[1])
@@ -139,7 +141,7 @@ func start_app(config Config) {
 	if config.Trusted_Root_Ca_File != "" {
 		content, err := ioutil.ReadFile(config.Trusted_Root_Ca_File)
 		if err != nil {
-			log.Fatalf("Failed to read file Trusted Root CA %s", config.Trusted_Root_Ca_File)
+			log.Fatalf("Failed to read file Trusted Root CA %s, %v", config.Trusted_Root_Ca_File, err)
 		}
 		ok := certp.AppendCertsFromPEM([]byte(content))
 		if !ok {
@@ -147,11 +149,26 @@ func start_app(config Config) {
 		}
 	}
 
-	mTlsConfig := &tls.Config{}
-	mTlsConfig.PreferServerCipherSuites = true
-	mTlsConfig.MinVersion = tls.VersionTLS10
-	mTlsConfig.MaxVersion = tls.VersionTLS12
-	mTlsConfig.RootCAs = certp
+	mTlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12, // minimum TLS 1.2
+		// P curve order does not matter, as breaking one means all others can be brute-forced as well:
+		// Golang developers prefer:
+		CurvePreferences:         []tls.CurveID{tls.X25519, tls.CurveP256, tls.CurveP384, tls.CurveP521},
+		PreferServerCipherSuites: true, // Server chooses ciphersuite, order matters below:
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+			tls.TLS_CHACHA20_POLY1305_SHA256, // TLS 1.3
+			tls.TLS_AES_256_GCM_SHA384,       // TLS 1.3
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_AES_128_GCM_SHA256, // TLS 1.3
+		},
+		RootCAs: certp,
+	}
 
 	tr := &http.Transport{
 		TLSClientConfig: mTlsConfig,
@@ -223,9 +240,7 @@ func start_app(config Config) {
 			cluster.Scopes = []string{"openid", "profile", "email", "offline_access", "groups"}
 		}
 
-		if cluster.K8s_Ca_Pem != "" {
-			cluster.K8s_Ca_Pem = cluster.K8s_Ca_Pem
-		} else if cluster.K8s_Ca_Pem_File != "" {
+		if cluster.K8s_Ca_Pem_File != "" {
 			content, err := ioutil.ReadFile(cluster.K8s_Ca_Pem_File)
 			if err != nil {
 				log.Fatalf("Failed to load CA from file %s, %s", cluster.K8s_Ca_Pem_File, err)
@@ -233,13 +248,21 @@ func start_app(config Config) {
 			cluster.K8s_Ca_Pem = cast.ToString(content)
 		}
 
+		if cluster.K8s_Ca_Pem == "" && cluster.K8s_Ca_Pem_Base64_Encoded != "" {
+			p, err := base64.StdEncoding.DecodeString(cluster.K8s_Ca_Pem_Base64_Encoded)
+			if err != nil {
+				log.Fatalf("Failed to base64 decode ca pem: %s", err.Error())
+			}
+
+			cluster.K8s_Ca_Pem = string(p)
+		}
+
 		cluster.Config = config
 
 		base_redirect_uri, err := url.Parse(cluster.Redirect_URI)
 
 		if err != nil {
-			log.Printf("Parsing redirect_uri address: %v", err)
-			os.Exit(1)
+			log.Fatalf("Parsing redirect_uri address: %v", err)
 		}
 
 		// Each cluster gets a different login and callback URL
@@ -376,10 +399,11 @@ func initConfig() {
 		}
 
 		origConfigStr := bytes.NewBuffer(config).String()
-		err = viper.ReadConfig(bytes.NewBufferString(origConfigStr))
-		if err != nil {
-			log.Println(err)
+
+		if err := viper.ReadConfig(bytes.NewBufferString(origConfigStr)); err != nil {
+			log.Fatalf("viper.ReadConfig failed to read config, %s", err.Error())
 		}
+
 		log.Printf("Using config file: %s", viper.ConfigFileUsed())
 	}
 }
@@ -388,10 +412,10 @@ func initConfig() {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	err := viper.BindPFlags(RootCmd.Flags())
-	if err != nil {
-		log.Println(err)
+	if err := viper.BindPFlags(RootCmd.Flags()); err != nil {
+		log.Fatal(err)
 	}
+
 	RootCmd.Flags().StringVar(&config_file, "config", "", "./config.yml")
 	RootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", false, "Enable debug logging")
 }
