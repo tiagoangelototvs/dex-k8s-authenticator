@@ -1,5 +1,15 @@
 # Changelog
 All notable changes to this project will be documented in this file.
+## [v1.4.1-tks.0]
+
+### Added
+- field "alias" in config. This field is used on kubeconfig file. If this field is not filled, the name of cluster is used.
+- Go update to 1.18
+- Fix security issues reported by trivy
+
+## [v1.4.0-tks.1]
+- Forked version by TKS Team
+- added kubeconfig tab
 
 ## [v1.4.0]
 
