@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"reflect"
 	"strings"
 )
 
@@ -24,9 +25,47 @@ func base64encode(v string) string {
 	return base64.StdEncoding.EncodeToString([]byte(v))
 }
 
+func dfault(d interface{}, given ...interface{}) interface{} {
+
+	if empty(given) || empty(given[0]) {
+		return d
+	}
+	return given[0]
+}
+
+// empty returns true if the given value has the zero value for its type.
+func empty(given interface{}) bool {
+	g := reflect.ValueOf(given)
+	if !g.IsValid() {
+		return true
+	}
+
+	// Basically adapted from text/template.isTrue
+	switch g.Kind() {
+	default:
+		return g.IsNil()
+	case reflect.Array, reflect.Slice, reflect.Map, reflect.String:
+		return g.Len() == 0
+	case reflect.Bool:
+		return !g.Bool()
+	case reflect.Complex64, reflect.Complex128:
+		return g.Complex() == 0
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return g.Int() == 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return g.Uint() == 0
+	case reflect.Float32, reflect.Float64:
+		return g.Float() == 0
+	case reflect.Struct:
+		return false
+	}
+}
+
 var templateFuncMap = template.FuncMap{
-	"b64dec": base64decode,
-	"b64enc": base64encode,
+	"b64dec":  base64decode,
+	"b64enc":  base64encode,
+	"default": dfault,
+	"empty":   empty,
 }
 
 // compile all templates and cache them
@@ -49,6 +88,7 @@ type templateData struct {
 	Username          string
 	Issuer            string
 	ClusterName       string
+	ClusterAlias      string
 	ShortDescription  string
 	ClientSecret      string
 	ClientID          string
@@ -94,6 +134,7 @@ func (cluster *Cluster) renderToken(w http.ResponseWriter,
 		Username:          unix_username,
 		Issuer:            data["iss"].(string),
 		ClusterName:       cluster.Name,
+		ClusterAlias:      cluster.Alias,
 		ShortDescription:  cluster.Short_Description,
 		ClientSecret:      cluster.Client_Secret,
 		ClientID:          cluster.Client_ID,
