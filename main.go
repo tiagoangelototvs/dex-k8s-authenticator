@@ -61,6 +61,7 @@ type Cluster struct {
 	Namespace                 string
 	Short_Description         string
 	Description               string
+	Alias                     string
 	Issuer                    string
 	Client_Secret             string
 	Client_ID                 string
