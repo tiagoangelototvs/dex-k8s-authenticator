@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -140,7 +139,7 @@ func start_app(config Config) {
 	}
 	// Load CA certs from file
 	if config.Trusted_Root_Ca_File != "" {
-		content, err := ioutil.ReadFile(config.Trusted_Root_Ca_File)
+		content, err := os.ReadFile(config.Trusted_Root_Ca_File)
 		if err != nil {
 			log.Fatalf("Failed to read file Trusted Root CA %s, %v", config.Trusted_Root_Ca_File, err)
 		}
@@ -242,7 +241,7 @@ func start_app(config Config) {
 		}
 
 		if cluster.K8s_Ca_Pem_File != "" {
-			content, err := ioutil.ReadFile(cluster.K8s_Ca_Pem_File)
+			content, err := os.ReadFile(cluster.K8s_Ca_Pem_File)
 			if err != nil {
 				log.Fatalf("Failed to load CA from file %s, %s", cluster.K8s_Ca_Pem_File, err)
 			}
@@ -394,7 +393,7 @@ func initConfig() {
 		viper.AddConfigPath(pth)
 		viper.SetDefault("web_path_prefix", "/")
 
-		config, err := ioutil.ReadFile(config_file)
+		config, err := os.ReadFile(config_file)
 		if err != nil {
 			log.Fatalf("Error reading config file, %s", err)
 		}
