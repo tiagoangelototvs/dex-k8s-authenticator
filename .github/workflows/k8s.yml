@@ -41,9 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - name: setup-kind
-        uses: engineerd/setup-kind@v0.5.0
-        with:
-          name: kind
+        uses: helm/kind-action@v1.8.0
       - name: build-ci-image
         run: |
           docker build -t mintel/dex-k8s-authenticator:${GITHUB_SHA} .
