@@ -25,10 +25,10 @@ FROM alpine:3.18.4
 #
 # OpenSSL is required so wget can query HTTPS endpoints for health checking.
 RUN apk --no-cache add \
-    ca-certificates=~"20230506-r0" \
-    openssl=~"3.1.4-r1" \
-    curl=~"8.4.0-r0" \
-    tini
+    ca-certificates=~"20230506" \
+    openssl=~"3.1.4" \
+    curl=~"8.4.0" \
+    tini=~"0.19.0"
 
 RUN mkdir -p /app/bin
 COPY --from=build /app/bin/dex-k8s-authenticator /app/bin/
